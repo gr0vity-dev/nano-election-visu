@@ -56,20 +56,19 @@ async def send_data_to_clients(clients_to_send, data):
         try:
             await client.send(json.dumps({"elections": data}))
         except Exception as e:
-            print(f"Error sending message: {e}")
+            logging.error("Error sending message: %s", e)
             clients.remove(client)
 
 
-async def broadcast(force=False):
+async def broadcast():
     global previous_data_hash
     while True:
         data_hash, data = await get_data_for_broadcast()
-        if clients and (data_hash != previous_data_hash or force):
+        if clients and data_hash != previous_data_hash:
             previous_data_hash = data_hash
-            # Use the new send_data_to_clients function
             await send_data_to_clients(clients, data)
 
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.5)
 
 
 async def refresh_quorum():
@@ -82,26 +81,25 @@ async def refresh_quorum():
 @app.websocket('/ws')
 async def ws():
     current_client = websocket._get_current_object()
-    # Initialize the client's data with a None hash (or use an appropriate default value)
     clients.append(current_client)
-    logger.info(f"New client connected: {current_client}")
+    logger.info("New client connected: %s", current_client)
     try:
         _, data = await get_data_for_broadcast()  # Get the current data
         # Send only to the current client
         await send_data_to_clients([current_client], data)
     except Exception as e:
-        logger.error(f"Error sending initial data to client: {e}")
+        logger.error("Error sending initial data to client: %s", e)
 
     try:
         while True:
             data = await websocket.receive()
-            logger.info(f"Received message from client: {data}")
+            logger.info("Received message from client: %s", data)
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+        logger.error("WebSocket error: %s", e)
     finally:
         # Clean up when a client disconnects
         clients.remove(current_client)
-        logger.info(f"Client disconnected: {current_client}")
+        logger.info("Client disconnected: %s", current_client)
 
 
 @app.route('/')

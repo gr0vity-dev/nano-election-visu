@@ -51,7 +51,7 @@ async def trim_election_results():
             current_hash, confirmed_elections, unconfirmed_elections = update_overview_data(
                 processed_l, processed_update_elections)
 
-        await aio_sleep(0.5)
+        await aio_sleep(0.45)
 
 
 async def run_nano_ws_listener():
