@@ -142,10 +142,10 @@ def election_formatter(block_data, election_data, online_reps):
 
     # Calculating average delays
     for account, rep in reps_summary.items():
-        rep["normal_delay"] = sum(
-            rep["normal_delay"]) / len(rep["normal_delay"]) if rep["normal_delay"] else -1
-        rep["final_delay"] = sum(
-            rep["final_delay"]) / len(rep["final_delay"]) if rep["final_delay"] else -1
+        rep["normal_delay"] = round(sum(
+            rep["normal_delay"]) / len(rep["normal_delay"]), 2) if rep["normal_delay"] else -1
+        rep["final_delay"] = round(sum(
+            rep["final_delay"]) / len(rep["final_delay"]), 2) if rep["final_delay"] else -1
         rep["weight"] = online_reps.get(account, {}).get("votingweight", 0)
         rep["weight_percent"] = online_reps.get(
             account, {}).get("weight_percent", 0)
