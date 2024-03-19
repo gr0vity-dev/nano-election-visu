@@ -143,6 +143,8 @@ def election_formatter(block_data, election_data, online_reps):
         rep["weight"] = online_reps.get(account, {}).get("votingweight", 0)
         rep["weight_percent"] = online_reps.get(
             account, {}).get("weight_percent", 0)
+        rep["node_version_telemetry"] = online_reps.get(
+            account, {}).get("node_version_telemetry", "N/A")
 
     for account, details in online_reps.items():
         if account not in reps_summary:
@@ -153,7 +155,8 @@ def election_formatter(block_data, election_data, online_reps):
                 "final_delay": -1,
                 "account_formatted": known.get(account) or account,
                 "weight": details.get("votingweight", 0),
-                "weight_percent": details.get("weight_percent", 0)
+                "weight_percent": details.get("weight_percent", 0),
+                "node_version_telemetry": details.get("node_version_telemetry", "N/A")
             }
 
     now = int(datetime.now().timestamp() * 1000)
@@ -200,11 +203,11 @@ async def process_data_for_send(data, include_top_voters=5):
         final_voters = []
 
         # Process votes in a single pass
+
         for vote in election["votes"]["detail"]:
             account = vote["account"]
             current_weight = online_reps.get(
                 account, {}).get("votingweight") or 0
-
             vote_type = vote["type"]
 
             # Handle normal votes
@@ -328,14 +331,69 @@ def merge_overview_data(merged_overview, delta, include_top_voters=5):
     return current_hash, confirmed_sorted, unconfirmed_sorted
 
 
+def update_overview_data(merged_overview, updated_overview, include_top_voters=5):
+    # Fallback to delta if merged_overview is not initialized
+    now = int(datetime.now().timestamp() * 1000)
+    confirmed_elections = {}
+    unconfirmed_elections = {}
+
+    if not merged_overview:
+        merged_overview = updated_overview
+    else:
+        for block_hash, delta_details in updated_overview.items():
+            merged_overview[block_hash] = delta_details
+
+    elections_str = json.dumps(merged_overview, sort_keys=True).encode()
+    current_hash = hashlib.sha256(elections_str).hexdigest()
+
+    # Exclude time changes from being hased, else it will always update!
+
+    for block_hash, details in merged_overview.items():
+        first_seen = details["first_seen"]
+        first_confirmed = details["first_confirmed"]
+        is_confirmed = details.get("is_confirmed", False)
+        merged_overview[block_hash]["active_since"] = (
+            now - first_seen) // 1000
+        merged_overview[block_hash]["confirmation_duration"] = first_confirmed - \
+            first_seen if details["first_confirmed"] else None
+
+        if is_confirmed:
+            confirmed_elections[block_hash] = merged_overview[block_hash]
+        else:
+            unconfirmed_elections[block_hash] = merged_overview[block_hash]
+
+    # Sort and limit the number of confirmed elections to 100
+    confirmed_sorted = dict(sorted(
+        confirmed_elections.items(),
+        key=lambda x: x[1].get('first_seen', 0),
+        reverse=True
+    )[:100])  # Slice to keep only the top 100
+
+    # Sort and limit the number of unconfirmed elections to 1500
+    unconfirmed_sorted = dict(sorted(
+        unconfirmed_elections.items(),
+        key=lambda x: (x[1].get('normal_weight', 0),
+                       x[1].get('final_weight', 0)),
+        reverse=True
+    )[:5000])  # Slice to keep only the top 1500
+
+    # Combine sorted and limited dictionaries
+
+    return current_hash, confirmed_sorted, unconfirmed_sorted
+
+
 def merge_elections_raw(elections_all, delta):
-    if not elections_all:  # More Pythonic way to check for an empty dictionary
+    updated_elections = {}
+
+    if not elections_all:
         elections_all = delta
-        return elections_all
+        updated_elections = delta
+        return elections_all, updated_elections
 
     for block_hash, delta_details in delta.items():
         if block_hash not in elections_all:
-            elections_all[block_hash] = delta_details.copy()
+            elections_all[block_hash] = delta_details
+            updated_elections[block_hash] = delta_details
         else:
             merge_details = elections_all[block_hash]
             merge_details["first_confirmed"] = delta_details["first_confirmed"] or merge_details["first_confirmed"]
@@ -377,7 +435,9 @@ def merge_elections_raw(elections_all, delta):
                 merge_details["is_stopped"] = False
                 merge_details["is_active"] = True
 
-    return elections_all
+            updated_elections[block_hash] = merge_details
+
+    return elections_all, updated_elections
 
 
 def merge_processed_election_delta(processed_elections, delta):

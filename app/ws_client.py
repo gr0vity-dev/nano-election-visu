@@ -1,4 +1,4 @@
-from data_processor import process_message, process_data_for_send, merge_overview_data, merge_elections_raw
+from data_processor import process_message, process_data_for_send, update_overview_data, merge_elections_raw
 from nanows.api import NanoWebSocket
 from asyncio import Lock, sleep as aio_sleep
 import logging
@@ -42,12 +42,14 @@ async def trim_election_results():
             election_copy = elections_temp
             elections_temp = {}
 
-        election_results = merge_elections_raw(election_results, election_copy)
-        election_delta = await process_data_for_send(election_copy)
-        if election_delta:
+        election_results, update_elections = merge_elections_raw(
+            election_results, election_copy)
+        processed_update_elections = await process_data_for_send(update_elections)
+
+        if processed_update_elections:
             processed_l = {**confirmed_elections, **unconfirmed_elections}
-            current_hash, confirmed_elections, unconfirmed_elections = merge_overview_data(
-                processed_l, election_delta)
+            current_hash, confirmed_elections, unconfirmed_elections = update_overview_data(
+                processed_l, processed_update_elections)
 
         await aio_sleep(0.5)
 

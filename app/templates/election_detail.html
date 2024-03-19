@@ -74,6 +74,7 @@
                 <thead>
                     <tr class="bg-gray-200">
                         <th class="w-1/4 px-4 py-2">Account</th>
+                        <th class="w-1/12 px-4 py-2">Version</th>
                         <th class="w-1/12 px-4 py-2">Weight %</th>
                         <th class="w-1/12 px-4 py-2">Normal Votes</th>
                         <th class="w-1/12 px-4 py-2">Normal Delay</th>
@@ -91,6 +92,7 @@
                 tableHtml += `
                     <tr>
                         <td class="border px-4 py-2 whitespace-nowrap" style="overflow:hidden">${details.account_formatted}</td>
+                        <td class="border px-4 py-2 ">${details.node_version_telemetry}</td>
                         <td class="border px-4 py-2 ">${details.weight_percent.toFixed(2)}</td>
                         <td class="border px-4 py-2 ${normalVoteClass}">${details.normal_votes}</td>
                         <td class="border px-4 py-2 ${normalDelayClass}">${details.normal_delay}</td>

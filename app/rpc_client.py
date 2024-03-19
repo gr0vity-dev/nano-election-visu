@@ -16,7 +16,6 @@ RPC_RECONNECT_DURATINO = 1  # duration until recconnect on failure
 rpc = None
 online_reps = {}
 confirmation_quorum = {}
-rpc_lock = Lock()
 
 
 def get_nanorpc_client():
@@ -77,21 +76,19 @@ async def get_block_info(block_hash=None):
     rpc = await get_rpc()
     hashes = [block_hash]
 
-    async with rpc_lock:
-        response = await rpc.blocks_info(hashes, json_block="true", source="true", receive_hash="true")
+    response = await rpc.blocks_info(hashes, json_block="true", source="true", receive_hash="true")
     return response
 
 
 async def fetch_online_reps():
     rpc = await get_rpc()
-    async with rpc_lock:
-        tasks = {
-            "online_reps": rpc.representatives_online(weight=True),
-            "telemetry": rpc.telemetry(raw=True),
-            "confirmation_quorum": rpc.confirmation_quorum(peer_details=True)
-        }
+    tasks = {
+        "online_reps": rpc.representatives_online(weight=True),
+        "telemetry": rpc.telemetry(raw=True),
+        "confirmation_quorum": rpc.confirmation_quorum(peer_details=True)
+    }
 
-        results = await execute_and_handle_errors(tasks)
+    results = await execute_and_handle_errors(tasks)
 
     return await transform_reps_online_data(results)
 
@@ -157,6 +154,8 @@ async def transform_reps_online_data(data):
             "weight": account_weight,
             "weight_percent": (account_weight / total_weight) * 100,
             "node_maker": node_maker_telemetry,
+            "node_version_telemetry": format_version(tac.get("major_version"), tac.get(
+                "minor_version"), tac.get("patch_version"), tac.get("pre_release_version")),
             "node_id": node_id
         }
 
@@ -190,3 +189,13 @@ async def execute_and_handle_errors(tasks, droppable_errors=None):
     except Exception as exc:
         raise ValueError(
             f"An unexpected error occurred: {exc}\nPlease try again later.")
+
+
+def format_version(major, minor, patch, pre_release):
+    # List of version parts
+    version_numbers = [major, minor, pre_release]
+    # Filter out any None values
+    valid_versions = [str(v) for v in version_numbers if v is not None]
+
+    # Join the remaining parts with dots, or return a default value if empty
+    return '.'.join(valid_versions) if valid_versions else "0.0.0"
