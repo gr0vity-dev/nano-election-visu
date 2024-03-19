@@ -1,16 +1,22 @@
 import aiohttp
 import json
 from nanorpc.client import NanoRpcTyped
-from asyncio import gather, sleep as aio_sleep
+from asyncio import gather, Lock, sleep as aio_sleep
 from os import getenv
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("Quart")
 
 RPC_URL = getenv("RPC_URL")
 RPC_USERNAME = getenv("RPC_USERNAME")
 RPC_PASSWORD = getenv("RPC_PASSWORD")
+RPC_RECONNECT_DURATINO = 1  # duration until recconnect on failure
 
 rpc = None
 online_reps = {}
 confirmation_quorum = {}
+rpc_lock = Lock()
 
 
 def get_nanorpc_client():
@@ -28,8 +34,11 @@ async def get_rpc():
         try:
             rpc = rpc or get_nanorpc_client()
             break
-        except:
-            aio_sleep(3)
+        except Exception as exc:
+            rpc = None
+            logging.warn(
+                f"RPC closed with Exception : {exc}\n Reconnecting...")
+            aio_sleep(RPC_RECONNECT_DURATINO)
     return rpc
 
 
@@ -47,54 +56,42 @@ async def fetch_http(url, session, method='get', payload=None):
 #     return await fetch_http(url, session, 'get')
 
 
-def get_online_reps():
+async def get_online_reps():
     return online_reps
+
+
+async def get_quorum():
+    return confirmation_quorum
 
 
 async def update_online_reps():
     global online_reps, confirmation_quorum
 
     online_reps, confirmation_quorum = await fetch_online_reps()
-
-    # async with aiohttp.ClientSession() as session:
-    #     online_reps_result = await fetch_online_reps(session)
-
-    # confirmation_quorum = await rpc.confirmation_quorum(peer_details=True)
-
-    # for online_rep in online_reps_result:
-    #     online_rep["connected"] = False
-    #     for peer in confirmation_quorum["peers"]:
-    #         if online_rep["account"] == peer["account"]:
-    #             online_rep["connected"] = True
-    #             online_rep["current_weight"] = int(peer.get("weight", 0))
-    #             online_rep["weight_diff"] = online_rep["votingweight"] - \
-    #                 int(peer.get("weight", 0))
-    #             break
-    #     online_reps[online_rep["account"]] = online_rep
-
-    # confirmation_quorum.pop("peers")
     return online_reps, confirmation_quorum
 
 
 async def get_block_info(block_hash=None):
     if block_hash is None or "":
         return {}
-
     rpc = await get_rpc()
     hashes = [block_hash]
-    response = await rpc.blocks_info(hashes, json_block="true", source="true", receive_hash="true")
+
+    async with rpc_lock:
+        response = await rpc.blocks_info(hashes, json_block="true", source="true", receive_hash="true")
     return response
 
 
 async def fetch_online_reps():
     rpc = await get_rpc()
-    tasks = {
-        "online_reps": rpc.representatives_online(weight=True),
-        "telemetry": rpc.telemetry(raw=True),
-        "confirmation_quorum": rpc.confirmation_quorum(peer_details=True)
-    }
+    async with rpc_lock:
+        tasks = {
+            "online_reps": rpc.representatives_online(weight=True),
+            "telemetry": rpc.telemetry(raw=True),
+            "confirmation_quorum": rpc.confirmation_quorum(peer_details=True)
+        }
 
-    results = await execute_and_handle_errors(tasks)
+        results = await execute_and_handle_errors(tasks)
 
     return await transform_reps_online_data(results)
 

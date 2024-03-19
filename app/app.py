@@ -4,11 +4,12 @@ import json
 from datetime import datetime
 import logging
 from quart import Quart, websocket, render_template, jsonify
-from ws_client import run_nano_ws_listener, election_results, election_results_lock
+from ws_client import run_nano_ws_listener, get_election_results, election_results, election_results_lock, trim_election_results, get_processed_elections
 from rpc_client import update_online_reps, get_block_info
 from data_processor import election_formatter, process_data_for_send
 import hashlib
 from os import getenv
+from secrets import token_hex
 
 
 # Setup logging
@@ -24,6 +25,7 @@ online_reps = {}
 
 @app.before_serving
 async def startup():
+    app.add_background_task(trim_election_results)
     app.add_background_task(refresh_quorum)
     app.add_background_task(broadcast)
     asyncio.create_task(run_nano_ws_listener())
@@ -33,38 +35,21 @@ MAX_CONFIRMED = 20
 
 
 async def get_election_data(hash=None):
-    async with election_results_lock:
-        if hash:
-            # Return data for the specific hash if it exists
-            election_data = election_results.get(
-                hash, {"error": "No election data found"})
-            return election_data
+    data = get_election_results()
 
-        # Return all election data if no specific hash is provided
-        return election_results
+    if hash:
+        # Return data for the specific hash if it exists
+        election_data = data.get(
+            hash, {"error": "No election data found"})
+        return election_data
+
+    # Return all election data if no specific hash is provided
+    return data
 
 
 async def get_data_for_broadcast():
-    global election_results
-    """Safely trims and copies data for broadcasting based on confirmation status."""
-    async with election_results_lock:
-        # Separate confirmed and unconfirmed elections, assuming each entry has an 'is_confirmed' flag
-        unconfirmed = {k: v for k, v in election_results.items()
-                       if not v.get('is_confirmed') and not v.get('is_stopped')}
-        confirmed = {k: v for k, v in election_results.items()
-                     if v.get('is_confirmed')}
-
-        # Note: This step assumes dictionaries are in insertion (chronological) order.
-        trimmed_unconfirmed = dict(
-            list(unconfirmed.items())[-MAX_UNCONFIRMED:])
-        trimmed_confirmed = dict(list(confirmed.items())[-MAX_CONFIRMED:])
-
-        # Combine back the trimmed results for processing
-        # election_results = {**trimmed_unconfirmed, **trimmed_confirmed}
-        combined_data = {**trimmed_unconfirmed, **trimmed_confirmed}
-
-    # Now, process and return the trimmed data for sending
-    return process_data_for_send(combined_data, quorum, include_top_voters=0)
+    processed_elections = get_processed_elections()
+    return processed_elections
 
 
 async def broadcast():
@@ -72,19 +57,17 @@ async def broadcast():
         start_time = time.time()
         data_hash, data = await get_data_for_broadcast()
         duration = time.time() - start_time
-        # logging.info(
-        #     f"Preparing took {duration * 1000:.3f} ms for {len(election_results)} elections")
         if clients_data:  # Check if there are any connected clients
             for ws, ws_data in list(clients_data.items()):  # Iterate over clients
                 try:
                     if data_hash != ws_data["hash"]:
-                        await ws.send(json.dumps({"duration": duration, "count": len(data), "quorum": quorum, "elections": data}))
+                        await ws.send(json.dumps({"elections": data}))
                         # Update the hash for the client
                         ws_data["hash"] = data_hash
                 except Exception as e:
                     print(f"Error sending message: {e}")
                     clients_data.pop(ws, None)  # Remove the client on error
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.3)
 
 
 async def refresh_quorum():
