@@ -39,7 +39,7 @@
                 blocks.forEach((block) => {
                     // Calculate last activity and confirmation duration if applicable
                     const lastActivity = electionData.last_activity ? `${electionData.last_activity} seconds ago` : 'N/A';
-                    const confirmationDuration = block.confirmed ? `${block.confirmation_duration} seconds` : 'Unconfirmed';
+                    const confirmationDuration = block.confirmed ? `${electionData.confirmation_duration} ms` : 'Unconfirmed';
         
                     blockInfoHtml += `
                         <div class="block-overview my-4 p-4 shadow-lg rounded-lg bg-white">
