@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Election Data Visualization</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.0/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="flex">
+    <div class="w-1/2 p-4 overflow-y-auto" style="height: 100vh;">
+        <h2 class="text-lg font-semibold">Unconfirmed Transactions</h2>
+        <pre id="unconfirmed"></pre>
+    </div>
+    <div class="w-1/2 p-4 border-l overflow-y-auto" style="height: 100vh;">
+        <h2 class="text-lg font-semibold">Confirmed Transactions</h2>
+        <pre id="confirmed"></pre>
+    </div>
+
+    <script>
+        const ws = new WebSocket(`ws://${window.location.host}/ws`);
+
+        ws.onmessage = (event) => {
+            const { elections } = JSON.parse(event.data);
+            updateDisplay(elections);
+        };
+
+        function updateDisplay(elections) {
+            const unconfirmedTransactions = {};
+            const confirmedTransactions = {};
+
+            Object.entries(elections).forEach(([hash, data]) => {
+                if (data.is_confirmed) {
+                    confirmedTransactions[hash] = data;
+                } else {
+                    unconfirmedTransactions[hash] = data;
+                }
+            });
+
+            document.getElementById('unconfirmed').textContent = JSON.stringify(unconfirmedTransactions, null, 2);
+            document.getElementById('confirmed').textContent = JSON.stringify(confirmedTransactions, null, 2);
+        }
+    </script>
+</body>
+</html>

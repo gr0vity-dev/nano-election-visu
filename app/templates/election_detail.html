@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Election Details</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.0.3/dist/tailwind.min.css" rel="stylesheet">
+    <!-- DataTables CSS -->
+    <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.10.25/css/jquery.dataTables.css">
+  
+    <!-- jQuery -->
+    <script type="text/javascript" charset="utf8" src="https://code.jquery.com/jquery-3.5.1.js"></script>
+    <!-- DataTables -->
+    <script type="text/javascript" charset="utf8" src="https://cdn.datatables.net/1.10.25/js/jquery.dataTables.js"></script>
+</head>
+<body class="bg-gray-100">
+    <div class="container mx-auto px-4 py-8">
+        <h1 class="text-2xl font-bold text-gray-800 mb-6">Election Details</h1>
+        
+        <!-- Placeholder for Block Info -->
+        <div id="block-info" class="bg-white shadow rounded-lg p-6 mb-6">
+            <!-- Block info will be populated here -->
+        </div>
+
+        <!-- Data Table -->
+        <div id="data-table" class="bg-white shadow rounded-lg p-6"></div>
+    </div>
+
+    <script>
+        const electionData = JSON.parse('{{ election_data|tojson|safe }}');
+        const blockExplorer = JSON.parse('{{ block_explorer|tojson|safe }}');
+
+         // Function to populate the block info
+         function populateOverview(electionData) {
+            // Extract blocks and other data from electionData
+            const blocks = electionData.blocks;
+            let blockInfoHtml = '';
+        
+            if (blocks && blocks.length > 0) {
+                blocks.forEach((block) => {
+                    // Calculate last activity and confirmation duration if applicable
+                    const lastActivity = electionData.last_activity ? `${electionData.last_activity} seconds ago` : 'N/A';
+                    const confirmationDuration = block.confirmed ? `${block.confirmation_duration} seconds` : 'Unconfirmed';
+        
+                    blockInfoHtml += `
+                        <div class="block-overview my-4 p-4 shadow-lg rounded-lg bg-white">
+                            <p class="text-lg"><strong>Account:</strong> <a href="${blockExplorer}/account/${block.account}" class="text-blue-500 hover:text-blue-600">${block.account}</a></p>
+                            <p class="text-lg"><strong>Balance:</strong> ${block.balance}</p>
+                            <p class="text-lg"><strong>Transaction Amount:</strong> ${block.amount}</p>
+                            <p class="text-lg"><strong>Block Hash:</strong> <a href="${blockExplorer}/block/${block.hash}" class="text-blue-500 hover:text-blue-600">${block.hash}</a></p>
+                            <p class="text-lg"><strong>Confirmed:</strong> ${block.confirmed ? 'Yes' : 'No'}</p>
+                            <p class="text-lg"><strong>Confirmation Duration:</strong> ${confirmationDuration}</p>
+                            <p class="text-lg"><strong>Last Activity:</strong> ${lastActivity}</p>
+                            <p class="text-lg"><strong>Block Type (Subtype):</strong> ${block.block_type}</p>
+                            <p class="text-lg"><strong>Height:</strong> ${block.height}</p>
+                        </div>
+                    `;
+                });
+            } else {
+                blockInfoHtml = '<p class="text-lg">No block information available.</p>';
+            }
+        
+            // Setting the innerHTML of the block-info element to the newly created HTML content
+            document.getElementById('block-info').innerHTML = blockInfoHtml;
+        }
+        
+
+        
+
+        function populateTable(summary) {
+            const sortedAccounts = Object.entries(summary).sort((a, b) => b[1].weight - a[1].weight);
+
+            let tableHtml = `
+            <table class="table-fixed w-full">
+                <thead>
+                    <tr class="bg-gray-200">
+                        <th class="w-1/4 px-4 py-2">Account</th>
+                        <th class="w-1/12 px-4 py-2">Weight %</th>
+                        <th class="w-1/12 px-4 py-2">Normal Votes</th>
+                        <th class="w-1/12 px-4 py-2">Normal Delay</th>
+                        <th class="w-1/12 px-4 py-2">Final Votes</th>
+                        <th class="w-1/12 px-4 py-2">Final Delay</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+            for (const [account, details] of sortedAccounts) {
+                const normalVoteClass = getVoteCountClass(details.normal_votes);
+                const finalVoteClass = getVoteCountClass(details.final_votes);
+                const normalDelayClass = getVoteDurationClass(details.normal_delay);
+                const finalDelayClass = getVoteDurationClass(details.final_delay);
+
+                tableHtml += `
+                    <tr>
+                        <td class="border px-4 py-2 whitespace-nowrap" style="overflow:hidden">${details.account_formatted}</td>
+                        <td class="border px-4 py-2 ">${details.weight_percent.toFixed(2)}</td>
+                        <td class="border px-4 py-2 ${normalVoteClass}">${details.normal_votes}</td>
+                        <td class="border px-4 py-2 ${normalDelayClass}">${details.normal_delay}</td>
+                        <td class="border px-4 py-2 ${finalVoteClass}">${details.final_votes}</td>
+                        <td class="border px-4 py-2 ${finalDelayClass}">${details.final_delay}</td>
+                    </tr>
+                `;
+            }
+            tableHtml += '</tbody></table>';
+            document.getElementById('data-table').innerHTML = tableHtml;            
+
+            // Initialize DataTables on your table
+            $(document).ready(function() {
+                $('#data-table table').DataTable({
+                    responsive: true,
+                    paging: false
+                });
+            });
+        }
+
+        function getVoteCountClass(value) {
+            // Adjust with Tailwind classes as needed
+        }
+
+        function getVoteDurationClass(value) {
+            // Use Tailwind's text and background color utilities
+            if (value < 0) return 'bg-red-900 text-white';
+            else if (value <= 200) return 'bg-green-200';
+            else if (value <= 400) return 'bg-green-400';
+            else if (value <= 1000) return 'bg-yellow-300';
+            else if (value <= 5000) return 'bg-yellow-600 text-white';
+            else if (value <= 60000) return 'bg-red-400';
+            else return 'bg-red-700 text-white';
+        }
+
+        
+        populateOverview(electionData);
+        populateTable(electionData.summary);
+
+        
+    </script>
+</body>
+</html>

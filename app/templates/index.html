@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Election Data Visualization</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.0/dist/tailwind.min.css" rel="stylesheet">
+    <style>
+        .bar-container { display: flex; align-items: center; width: 100%; position: relative; height: 14px; }
+        .bar { position: absolute; height: 100%; }
+        .text-sm { z-index: 1; position: relative; width: 100%; text-align: left; padding-left: 4px; }
+        .normal-weight { background-color: #90CDF4; } /* Light Blue */
+        .final-weight { background-color: #3182CE; } /* Bright Blue */
+    </style>
+</head>
+<body class="flex">
+    <div class="w-1/2 p-4 overflow-y-auto" style="height: 100vh;">
+        <h2 class="text-lg font-semibold">Unconfirmed Transactions</h2>
+        <div id="unconfirmed"></div>
+    </div>
+    <div class="w-1/2 p-4 border-l overflow-y-auto" style="height: 100vh;">
+        <h2 class="text-lg font-semibold">Confirmed Transactions</h2>
+        <div id="confirmed"></div>
+    </div>
+
+    <script>
+        const ws = new WebSocket(`ws://${window.location.host}/ws`);
+
+        ws.onmessage = (event) => {
+            const { elections } = JSON.parse(event.data);
+            updateDisplay(elections);
+        };
+
+        function updateDisplay(elections) {
+            const unconfirmedDiv = document.getElementById('unconfirmed');
+            const confirmedDiv = document.getElementById('confirmed');
+
+            // Clear previous content
+            unconfirmedDiv.innerHTML = '';
+            confirmedDiv.innerHTML = '';
+
+            Object.entries(elections).forEach(([hash, data]) => {
+                const element = document.createElement('div');
+                element.innerHTML = `                    
+                    <div class="bar-container">
+                        <div class="text-sm">Normal: ${data.normal_weight_percent.toFixed(2)}%</div>
+                        <div class="bar normal-weight" style="width: ${data.normal_weight_percent}%;"></div>
+                    </div>
+                    <div class="bar-container">
+                        <div class="text-sm">Final: ${data.final_weight_percent.toFixed(2)}%</div>
+                        <div class="bar final-weight" style="width: ${data.final_weight_percent}%;"></div>
+                    </div>
+                `;
+    
+                if (data.is_confirmed) {
+                    element.innerHTML = `
+                    <p class="font-bold text-sm whitespace-nowrap"><a href="/election_details/${hash}" target="_blank">(conf: ${data.confirmation_duration} ms) ${hash}</a></p>` +
+                    element.innerHTML
+
+                    confirmedDiv.appendChild(element);
+                } else {
+                    element.innerHTML = `
+                    <p class="font-bold text-sm whitespace-nowrap"><a href="/election_details/${hash}" target="_blank">(active since: ${data.active_since} s) ${hash}</a></p>` +
+                    element.innerHTML
+                    unconfirmedDiv.appendChild(element);
+                }
+            });
+
+           
+        }
+
+    
+    </script>
+</body>
+</html>

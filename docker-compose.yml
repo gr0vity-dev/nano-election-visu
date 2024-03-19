@@ -1,0 +1,12 @@
+version: '3'
+services:
+  nano-explorer:
+    build: ./app
+    ports:
+      - "5003:5000"
+    environment:
+      WS_URL: ${WS_URL}
+      RPC_URL: ${RPC_URL}
+      RPC_USERNAME: ${RPC_USERNAME}
+      RPC_PASSWORD: ${RPC_PASSWORD}
+      BLOCK_EXPLORER: "https://nanobrowse.com"
