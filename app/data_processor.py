@@ -1,6 +1,8 @@
 from rpc_client import get_online_reps
 from known import known
 from datetime import datetime
+import json
+import hashlib
 
 
 def initialise_block_hash(election_results, block_hash, msg_time):
@@ -82,9 +84,9 @@ def process_event_message(msg, election_results, msg_time, topic):
 def election_formatter(block_data, election_data, online_reps):
 
     blocks = []
-    for hash, info in block_data.get("blocks", {}).items():
+    for block_hash, info in block_data.get("blocks", {}).items():
         blocks.append({
-            "hash": hash,
+            "hash": block_hash,
             "confirmed": info.get("confirmed") == "true",
             "amount": info.get("amount", ""),
             "account": info.get("contents", {}).get("account", ""),
@@ -177,75 +179,98 @@ def election_formatter(block_data, election_data, online_reps):
     }
 
 
-# def election_formatter(block_data, election_data, online_reps):
+def process_data_for_send(data, quorum, include_top_voters=10):
+    data_to_send = {}
+    quorum_delta = int(quorum.get("quorum_delta", "1"))
 
-#     blocks = []
-#     for hash, info in block_data.get("blocks", {}).items():
-#         blocks.append({
-#             "hash": hash,
-#             "amount": info.get("amount", ""),
-#             "account": info["contents"].get("account", ""),
-#             "balance": info.get("balance", ""),
-#             "height": info.get("height", "")
-#         })
+    confirmed_elections = {}
+    unconfirmed_elections = {}
+    now = int(datetime.now().timestamp() * 1000)
 
-#     first_seen = int(election_data.get("first_seen", 0))
-#     confirmed_timestamps = [int(ts)
-#                             for ts in election_data.get("confirmed", [])]
-#     confirmation_duration = min(
-#         confirmed_timestamps) - first_seen if confirmed_timestamps else None
+    for block_hash, election in data.items():
+        # Initialize data structure
 
-#     election_data.setdefault("votes", {})
-#     election_data["votes"].setdefault("detail", [])
+        data_to_send[block_hash] = {
+            "normal_weight": 0,
+            "final_weight": 0,
+            "is_active": election.get("is_active", False),
+            "is_stopped": election.get("is_stopped", False),
+            "is_confirmed": election.get("is_confirmed", False),
+            "normal_votes": election.get("votes", {}).get("normal", 0),
+            "final_votes": election.get("votes", {}).get("final", 0),
+            "first_seen":  election.get("first_seen", 0),
+            "first_final_voters": []
+        }
 
-#     # Identifying the min timestamp for the first vote and first final vote
-#     first_normal_vote_time = min(int(
-#         vote["time"]) for vote in election_data["votes"]["detail"] if vote["type"] == "normal")
-#     first_final_vote_time = min(int(
-#         vote["time"]) for vote in election_data["votes"]["detail"] if vote["type"] == "final")
+        seen_accounts_normal = set()
+        seen_accounts_final = set()
+        final_voters = []
 
-#     reps_summary = {}
-#     for vote in election_data["votes"]["detail"]:
-#         account = vote["account"]
-#         account_formatted = vote["account_formatted"]
-#         if account not in reps_summary:
-#             reps_summary[account] = {
-#                 "normal_votes": 0, "final_votes": 0, "normal_delay": [], "final_delay": [], "account_formatted": account_formatted}
+        # Process votes in a single pass
+        for vote in election["votes"]["detail"]:
+            current_weight = vote["weight"] or 0
+            account = vote["account"]
+            vote_type = vote["type"]
 
-#         vote_time = int(vote["time"])
-#         if vote["type"] == "normal":
-#             reps_summary[account]["normal_votes"] += 1
-#             reps_summary[account]["normal_delay"].append(
-#                 vote_time - first_normal_vote_time)
-#         elif vote["type"] == "final":
-#             reps_summary[account]["final_votes"] += 1
-#             reps_summary[account]["final_delay"].append(
-#                 vote_time - first_final_vote_time)
+            # Handle normal votes
+            if vote_type == "normal" and account not in seen_accounts_normal:
+                data_to_send[block_hash]["normal_weight"] += current_weight
+                seen_accounts_normal.add(account)
+            # Handle final votes
+            elif vote_type == "final":
+                if account not in seen_accounts_final:
+                    data_to_send[block_hash]["final_weight"] += current_weight
+                    seen_accounts_final.add(account)
+                final_voters.append(vote)
 
-#     # Calculating average delays
-#     for account, rep in reps_summary.items():
-#         rep["normal_delay"] = sum(
-#             rep["normal_delay"]) / len(rep["normal_delay"]) if rep["normal_delay"] else 0
-#         rep["final_delay"] = sum(
-#             rep["final_delay"]) / len(rep["final_delay"]) if rep["final_delay"] else 0
-#         rep["weight"] = online_reps[account].get("votingweight")
+        # Sort and select top final voters after processing all votes
+        final_voters_sorted = sorted(final_voters, key=lambda x: x["time"])
+        first_final_voter_aliases = [
+            vote.get("account_formatted", vote["account"])
+            for vote in final_voters_sorted[:include_top_voters]
+        ]
+        data_to_send[block_hash]["first_final_voters"] = first_final_voter_aliases
+        data_to_send[block_hash]["normal_weight_percent"] = (
+            data_to_send[block_hash]["normal_weight"] / quorum_delta) * 100
+        data_to_send[block_hash]["final_weight_percent"] = (
+            data_to_send[block_hash]["final_weight"] / quorum_delta) * 100
 
-#     for account, details in online_reps.items():
-#         if account not in reps_summary:
-#             reps_summary[account] = {
-#                 "normal_votes": 0,
-#                 "final_votes": 0,
-#                 "normal_delay": -1,
-#                 "final_delay": -1,
-#                 "account_formatted": details["account_formatted"],
-#                 "weight": details["votingweight"]
-#             }
+        # Distribute elections into confirmed and unconfirmed
+        if election.get("is_confirmed"):
+            confirmed_elections[block_hash] = data_to_send[block_hash]
+        else:
+            unconfirmed_elections[block_hash] = data_to_send[block_hash]
 
-#     return {
-#         "blocks": blocks[0],
-#         "first_seen": first_seen,
-#         "confirmation_duration": confirmation_duration,
-#         "first_normal_vote_time": first_normal_vote_time,
-#         "first_final_vote_time": first_final_vote_time,
-#         "summary": reps_summary
-#     }
+    # Sort confirmed elections by 'first_seen' in reverse order
+
+    confirmed_sorted = dict(sorted(
+        confirmed_elections.items(),
+        key=lambda x: x[1].get('first_seen', 0),
+        reverse=True
+    ))
+
+    unconfirmed_sorted = dict(sorted(
+        unconfirmed_elections.items(),
+        key=lambda x: (x[1].get('normal_weight', 0),
+                       x[1].get('final_weight', 0)),
+        reverse=True
+    ))
+
+    # # Combine sorted dictionaries
+    data_to_send = {**unconfirmed_sorted, **confirmed_sorted}
+
+    elections_str = json.dumps(data_to_send, sort_keys=True).encode()
+    current_hash = hashlib.sha256(elections_str).hexdigest()
+
+    # Exclude time changes from being hased, else it will always update!
+    for block_hash, election in data.items():
+        first_seen = int(election.get("first_seen", now))
+        is_confirmed = election.get("is_confirmed", False)
+        confirmation_seen = int(election.get("confirmed", [])[
+            0] or 0) if is_confirmed else None
+        data_to_send[block_hash]["active_since"] = (
+            now - first_seen) // 1000 if first_seen else "N/A",
+        data_to_send[block_hash]["confirmation_duration"] = confirmation_seen - \
+            first_seen if is_confirmed else "N/A"
+
+    return current_hash, data_to_send

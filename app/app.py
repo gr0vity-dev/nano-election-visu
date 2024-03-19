@@ -6,7 +6,7 @@ import logging
 from quart import Quart, websocket, render_template, jsonify
 from ws_client import run_nano_ws_listener, election_results, election_results_lock
 from rpc_client import update_online_reps, get_block_info
-from data_processor import election_formatter
+from data_processor import election_formatter, process_data_for_send
 import hashlib
 from os import getenv
 
@@ -64,104 +64,7 @@ async def get_data_for_broadcast():
         combined_data = {**trimmed_unconfirmed, **trimmed_confirmed}
 
     # Now, process and return the trimmed data for sending
-    return process_data_for_send(combined_data)
-
-
-def process_data_for_send(data, include_top_voters=10):
-    data_to_send = {}
-    quorum_delta = int(quorum.get("quorum_delta", "1"))
-
-    confirmed_elections = {}
-    unconfirmed_elections = {}
-    now = int(datetime.now().timestamp() * 1000)
-
-    for hash, election in data.items():
-        # Initialize data structure
-
-        data_to_send[hash] = {
-            "normal_weight": 0,
-            "final_weight": 0,
-            "is_active": election.get("is_active", False),
-            "is_stopped": election.get("is_stopped", False),
-            "is_confirmed": election.get("is_confirmed", False),
-            "normal_votes": election.get("votes", {}).get("normal", 0),
-            "final_votes": election.get("votes", {}).get("final", 0),
-            "first_seen":  election.get("first_seen", 0),
-            "first_final_voters": []
-        }
-
-        seen_accounts_normal = set()
-        seen_accounts_final = set()
-        final_voters = []
-
-        # Process votes in a single pass
-        for vote in election["votes"]["detail"]:
-            current_weight = vote["weight"] or 0
-            account = vote["account"]
-            vote_type = vote["type"]
-
-            # Handle normal votes
-            if vote_type == "normal" and account not in seen_accounts_normal:
-                data_to_send[hash]["normal_weight"] += current_weight
-                seen_accounts_normal.add(account)
-            # Handle final votes
-            elif vote_type == "final":
-                if account not in seen_accounts_final:
-                    data_to_send[hash]["final_weight"] += current_weight
-                    seen_accounts_final.add(account)
-                final_voters.append(vote)
-
-        # Sort and select top final voters after processing all votes
-        final_voters_sorted = sorted(final_voters, key=lambda x: x["time"])
-        first_final_voter_aliases = [
-            vote.get("account_formatted", vote["account"])
-            for vote in final_voters_sorted[:include_top_voters]
-        ]
-        data_to_send[hash]["first_final_voters"] = first_final_voter_aliases
-        data_to_send[hash]["normal_weight_percent"] = (
-            data_to_send[hash]["normal_weight"] / quorum_delta) * 100
-        data_to_send[hash]["final_weight_percent"] = (
-            data_to_send[hash]["final_weight"] / quorum_delta) * 100
-
-        # Distribute elections into confirmed and unconfirmed
-        if election.get("is_confirmed"):
-            confirmed_elections[hash] = data_to_send[hash]
-        else:
-            unconfirmed_elections[hash] = data_to_send[hash]
-
-    # Sort confirmed elections by 'first_seen' in reverse order
-
-    confirmed_sorted = dict(sorted(
-        confirmed_elections.items(),
-        key=lambda x: x[1].get('first_seen', 0),
-        reverse=True
-    ))
-
-    unconfirmed_sorted = dict(sorted(
-        unconfirmed_elections.items(),
-        key=lambda x: (x[1].get('normal_weight', 0),
-                       x[1].get('final_weight', 0)),
-        reverse=True
-    ))
-
-    # # Combine sorted dictionaries
-    data_to_send = {**unconfirmed_sorted, **confirmed_sorted}
-
-    elections_str = json.dumps(data_to_send, sort_keys=True).encode()
-    current_hash = hashlib.sha256(elections_str).hexdigest()
-
-    # Exclude time changes from being hased, else it will always update!
-    for hash, election in data.items():
-        first_seen = int(election.get("first_seen", now))
-        is_confirmed = election.get("is_confirmed", False)
-        confirmation_seen = int(election.get("confirmed", [])[
-            0] or 0) if is_confirmed else None
-        data_to_send[hash]["active_since"] = (
-            now - first_seen) // 1000 if first_seen else "N/A",
-        data_to_send[hash]["confirmation_duration"] = confirmation_seen - \
-            first_seen if is_confirmed else "N/A"
-
-    return current_hash, data_to_send
+    return process_data_for_send(combined_data, quorum, include_top_voters=0)
 
 
 async def broadcast():
