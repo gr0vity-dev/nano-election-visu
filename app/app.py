@@ -4,9 +4,9 @@ import json
 from datetime import datetime
 import logging
 from quart import Quart, websocket, render_template, jsonify
-from ws_client import run_nano_ws_listener, get_election_results, election_results, election_results_lock, trim_election_results, get_processed_elections
+from ws_client import run_nano_ws_listener, get_election_results, trim_election_results, get_processed_elections
 from rpc_client import update_online_reps, get_block_info
-from data_processor import election_formatter, process_data_for_send
+from data_processor import election_formatter
 import hashlib
 from os import getenv
 from secrets import token_hex
@@ -18,9 +18,10 @@ logger = logging.getLogger("Quart")
 
 app = Quart(__name__)
 
-clients_data = {}
+clients = []
 quorum = {}
 online_reps = {}
+previous_data_hash = None
 
 
 @app.before_serving
@@ -29,9 +30,6 @@ async def startup():
     app.add_background_task(refresh_quorum)
     app.add_background_task(broadcast)
     asyncio.create_task(run_nano_ws_listener())
-
-MAX_UNCONFIRMED = 2500
-MAX_CONFIRMED = 20
 
 
 async def get_election_data(hash=None):
@@ -52,21 +50,25 @@ async def get_data_for_broadcast():
     return processed_elections
 
 
-async def broadcast():
+async def send_data_to_clients(clients_to_send, data):
+    """Send data to specified clients."""
+    for client in list(clients_to_send):  # Iterate over a copy of the specified clients list
+        try:
+            await client.send(json.dumps({"elections": data}))
+        except Exception as e:
+            print(f"Error sending message: {e}")
+            clients.remove(client)
+
+
+async def broadcast(force=False):
+    global previous_data_hash
     while True:
-        start_time = time.time()
         data_hash, data = await get_data_for_broadcast()
-        duration = time.time() - start_time
-        if clients_data:  # Check if there are any connected clients
-            for ws, ws_data in list(clients_data.items()):  # Iterate over clients
-                try:
-                    if data_hash != ws_data["hash"]:
-                        await ws.send(json.dumps({"elections": data}))
-                        # Update the hash for the client
-                        ws_data["hash"] = data_hash
-                except Exception as e:
-                    print(f"Error sending message: {e}")
-                    clients_data.pop(ws, None)  # Remove the client on error
+        if clients and (data_hash != previous_data_hash or force):
+            previous_data_hash = data_hash
+            # Use the new send_data_to_clients function
+            await send_data_to_clients(clients, data)
+
         await asyncio.sleep(0.3)
 
 
@@ -81,8 +83,15 @@ async def refresh_quorum():
 async def ws():
     current_client = websocket._get_current_object()
     # Initialize the client's data with a None hash (or use an appropriate default value)
-    clients_data[current_client] = {"hash": None}
+    clients.append(current_client)
     logger.info(f"New client connected: {current_client}")
+    try:
+        _, data = await get_data_for_broadcast()  # Get the current data
+        # Send only to the current client
+        await send_data_to_clients([current_client], data)
+    except Exception as e:
+        logger.error(f"Error sending initial data to client: {e}")
+
     try:
         while True:
             data = await websocket.receive()
@@ -91,7 +100,7 @@ async def ws():
         logger.error(f"WebSocket error: {e}")
     finally:
         # Clean up when a client disconnects
-        clients_data.pop(current_client, None)
+        clients.remove(current_client)
         logger.info(f"Client disconnected: {current_client}")
 
 
