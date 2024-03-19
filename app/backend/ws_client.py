@@ -1,57 +1,67 @@
-from data_processor import process_message, process_data_for_send, update_overview_data, merge_elections_raw
+from backend.data_processor import process_data_for_send
+from backend.ws_processor import process_message
 from nanows.api import NanoWebSocket
 from asyncio import Lock, sleep as aio_sleep
+from backend.elections import ElectionHandler
+from backend.overview import OverviewHandler
+from backend.cache_service import MemcacheCache
 import logging
 from os import getenv
 from copy import deepcopy
 
 
 WS_URL = getenv("WS_URL")
+MEMCACHE_HOST = getenv("MEMCACHE_HOST")
+MEMCACHE_PORT = getenv("MEMCACHE_PORT")
 msg_count = 0
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Quart")
 
-#
-election_results = {}
+election_cache = MemcacheCache(
+    host=MEMCACHE_HOST, port=MEMCACHE_PORT, prefix="el_")
+overview_cache = MemcacheCache(
+    host=MEMCACHE_HOST, port=MEMCACHE_PORT, prefix="ov_")
+
+election_handler = ElectionHandler(election_cache)
+overview_handler = OverviewHandler(overview_cache)
+
 elections_temp = {}
 election_results_lock = Lock()
-processed_elections = {}
-confirmed_elections = {}
-unconfirmed_elections = {}
+
 current_hash = None
-election_delta = {}
 
 
-def get_election_results():
-    return election_results
+async def get_election_results(transaction_hash):
+    return await election_cache.get(transaction_hash)
 
 
-def get_processed_elections():
+async def get_processed_elections():
     # Slicing the first 100 confirmed and 250 unconfirmed elections for display
-    confirmed_display = dict(list(confirmed_elections.items())[:100])
-    unconfirmed_display = dict(list(unconfirmed_elections.items())[:250])
-    return current_hash, {**confirmed_display, **unconfirmed_display}
+    processed_elections = await overview_handler.retrieve_election_data(
+        num_confirmed=50, num_unconfirmed=100)
+
+    return current_hash, processed_elections
 
 
 async def trim_election_results():
-    global election_results, election_delta, processed_elections, elections_temp, current_hash, confirmed_elections, unconfirmed_elections
+    global elections_temp, current_hash
     while True:
         async with election_results_lock:
-            election_copy = elections_temp
+            elections_delta = elections_temp
             elections_temp = {}
 
-        election_results, update_elections = merge_elections_raw(
-            election_results, election_copy)
-        processed_update_elections = await process_data_for_send(update_elections)
+        updated_elections = await election_handler.merge_elections(elections_delta)
 
+        # View Transformer
+        processed_update_elections = await process_data_for_send(updated_elections)
+
+        # View Aggregator
         if processed_update_elections:
-            processed_l = {**confirmed_elections, **unconfirmed_elections}
-            current_hash, confirmed_elections, unconfirmed_elections = update_overview_data(
-                processed_l, processed_update_elections)
+            current_hash = await overview_handler.process_and_cache_elections(processed_update_elections)
 
-        await aio_sleep(0.5)
+        await aio_sleep(0.45)
 
 
 async def run_nano_ws_listener():

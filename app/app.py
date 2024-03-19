@@ -1,16 +1,11 @@
-import time
+from quart import Quart, websocket, render_template, jsonify
+from backend.ws_client import run_nano_ws_listener, get_election_results, trim_election_results, get_processed_elections
+from backend.rpc_client import update_online_reps, get_block_info
+from backend.data_processor import election_formatter
+from os import getenv
 import asyncio
 import json
-from datetime import datetime
 import logging
-from quart import Quart, websocket, render_template, jsonify
-from ws_client import run_nano_ws_listener, get_election_results, trim_election_results, get_processed_elections
-from rpc_client import update_online_reps, get_block_info
-from data_processor import election_formatter
-import hashlib
-from os import getenv
-from secrets import token_hex
-
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -32,21 +27,18 @@ async def startup():
     asyncio.create_task(run_nano_ws_listener())
 
 
-async def get_election_data(hash=None):
-    data = get_election_results()
+async def get_election_data(hash):
+    election_data = await get_election_results(hash)
 
-    if hash:
-        # Return data for the specific hash if it exists
-        election_data = data.get(
-            hash, {"error": "No election data found"})
-        return election_data
+    if not election_data:
+        return {"error": "No election data found"}
 
     # Return all election data if no specific hash is provided
-    return data
+    return election_data
 
 
 async def get_data_for_broadcast():
-    processed_elections = get_processed_elections()
+    processed_elections = await get_processed_elections()
     return processed_elections
 
 
@@ -56,20 +48,19 @@ async def send_data_to_clients(clients_to_send, data):
         try:
             await client.send(json.dumps({"elections": data}))
         except Exception as e:
-            print(f"Error sending message: {e}")
+            logging.error("Error sending message: %s", e)
             clients.remove(client)
 
 
-async def broadcast(force=False):
+async def broadcast():
     global previous_data_hash
     while True:
         data_hash, data = await get_data_for_broadcast()
-        if clients and (data_hash != previous_data_hash or force):
+        if clients and data_hash != previous_data_hash:
             previous_data_hash = data_hash
-            # Use the new send_data_to_clients function
             await send_data_to_clients(clients, data)
 
-        await asyncio.sleep(0.3)
+        await asyncio.sleep(0.5)
 
 
 async def refresh_quorum():
@@ -82,26 +73,25 @@ async def refresh_quorum():
 @app.websocket('/ws')
 async def ws():
     current_client = websocket._get_current_object()
-    # Initialize the client's data with a None hash (or use an appropriate default value)
     clients.append(current_client)
-    logger.info(f"New client connected: {current_client}")
+    logger.info("New client connected: %s", current_client)
     try:
         _, data = await get_data_for_broadcast()  # Get the current data
         # Send only to the current client
         await send_data_to_clients([current_client], data)
     except Exception as e:
-        logger.error(f"Error sending initial data to client: {e}")
+        logger.error("Error sending initial data to client: %s", e)
 
     try:
         while True:
             data = await websocket.receive()
-            logger.info(f"Received message from client: {data}")
+            logger.info("Received message from client: %s", data)
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+        logger.error("WebSocket error: %s", e)
     finally:
         # Clean up when a client disconnects
         clients.remove(current_client)
-        logger.info(f"Client disconnected: {current_client}")
+        logger.info("Client disconnected: %s", current_client)
 
 
 @app.route('/')
@@ -109,9 +99,9 @@ async def index():
     return await render_template('index.html')
 
 
-@app.route('/raw')
-async def raw():
-    election_data = await get_election_data()
+@app.route('/raw/<hash>')
+async def raw(hash):
+    election_data = await get_election_data(hash)
     return election_data
 
 

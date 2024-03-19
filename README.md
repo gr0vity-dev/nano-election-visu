@@ -27,6 +27,7 @@ RPC_PASSWORD=<RPC Password>
 ```
 3. Build and start the Docker containers:
 ```
+docker compose --profile memcache up -d
 docker compose build && docker compose up -d
 ```
 

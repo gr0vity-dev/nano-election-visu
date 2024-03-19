@@ -50,11 +50,6 @@ async def fetch_http(url, session, method='get', payload=None):
             return await response.json()
 
 
-# async def fetch_online_reps(session):
-#     url = "https://nanobrowse.com/api/reps_online/"
-#     return await fetch_http(url, session, 'get')
-
-
 async def get_online_reps():
     return online_reps
 

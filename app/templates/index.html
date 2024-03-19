@@ -24,7 +24,9 @@
     </div>
 
     <script>
-        const ws = new WebSocket(`ws://${window.location.host}/ws`);
+        const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+        const ws = new WebSocket(`${protocol}://${window.location.host}/ws`);
+
 
         ws.onmessage = (event) => {
             const { elections } = JSON.parse(event.data);
@@ -34,13 +36,21 @@
         function updateDisplay(elections) {
             const unconfirmedDiv = document.getElementById('unconfirmed');
             const confirmedDiv = document.getElementById('confirmed');
+            const now = Date.now();
 
             // Clear previous content
             unconfirmedDiv.innerHTML = '';
             confirmedDiv.innerHTML = '';
+            
 
             Object.entries(elections).forEach(([hash, data]) => {
                 const element = document.createElement('div');
+                const active_since = Math.floor((now - data.first_seen) / 1000); // Convert milliseconds to seconds
+                let confirmation_duration = null;
+                if (data.first_confirmed) {
+                    confirmation_duration = data.first_confirmed - data.first_seen; // Keep as milliseconds
+                }
+                
                 element.innerHTML = `                    
                     <div class="bar-container">
                         <div class="text-sm">Normal: ${data.normal_weight_percent.toFixed(2)}%</div>
@@ -54,13 +64,13 @@
     
                 if (data.is_confirmed) {
                     element.innerHTML = `
-                    <p class="font-bold text-sm whitespace-nowrap"><a href="/election_details/${hash}" target="_blank">(conf: ${data.confirmation_duration} ms) ${hash}</a></p>` +
+                    <p class="font-bold text-sm whitespace-nowrap"><a href="/election_details/${hash}" target="_blank">(${confirmation_duration} ms) (${active_since}s ago) ${hash}</a></p>` +
                     element.innerHTML
 
                     confirmedDiv.appendChild(element);
                 } else {
                     element.innerHTML = `
-                    <p class="font-bold text-sm whitespace-nowrap"><a href="/election_details/${hash}" target="_blank">(active since: ${data.active_since} s) ${hash}</a></p>` +
+                    <p class="font-bold text-sm whitespace-nowrap"><a href="/election_details/${hash}" target="_blank">(active since: ${active_since} s) ${hash}</a></p>` +
                     element.innerHTML
                     unconfirmedDiv.appendChild(element);
                 }
