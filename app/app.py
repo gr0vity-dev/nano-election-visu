@@ -1,16 +1,11 @@
-import time
+from quart import Quart, websocket, render_template, jsonify
+from backend.ws_client import run_nano_ws_listener, get_election_results, trim_election_results, get_processed_elections
+from backend.rpc_client import update_online_reps, get_block_info
+from backend.data_processor import election_formatter
+from os import getenv
 import asyncio
 import json
-from datetime import datetime
 import logging
-from quart import Quart, websocket, render_template, jsonify
-from ws_client import run_nano_ws_listener, get_election_results, trim_election_results, get_processed_elections
-from rpc_client import update_online_reps, get_block_info
-from data_processor import election_formatter
-import hashlib
-from os import getenv
-from secrets import token_hex
-
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -32,17 +27,14 @@ async def startup():
     asyncio.create_task(run_nano_ws_listener())
 
 
-async def get_election_data(hash=None):
-    data = get_election_results()
+async def get_election_data(hash):
+    election_data = await get_election_results(hash)
 
-    if hash:
-        # Return data for the specific hash if it exists
-        election_data = data.get(
-            hash, {"error": "No election data found"})
-        return election_data
+    if not election_data:
+        return {"error": "No election data found"}
 
     # Return all election data if no specific hash is provided
-    return data
+    return election_data
 
 
 async def get_data_for_broadcast():
@@ -107,9 +99,9 @@ async def index():
     return await render_template('index.html')
 
 
-@app.route('/raw')
-async def raw():
-    election_data = await get_election_data()
+@app.route('/raw/<hash>')
+async def raw(hash):
+    election_data = await get_election_data(hash)
     return election_data
 
 

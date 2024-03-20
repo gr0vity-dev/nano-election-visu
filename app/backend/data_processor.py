@@ -1,4 +1,4 @@
-from rpc_client import get_online_reps, get_quorum
+from backend.rpc_client import get_online_reps, get_quorum
 from known import known
 from datetime import datetime
 import json

@@ -1,7 +1,9 @@
-from data_processor import process_data_for_send, update_overview_data, merge_elections_raw
-from ws_processor import process_message
+from backend.data_processor import process_data_for_send, update_overview_data, merge_elections_raw
+from backend.ws_processor import process_message
 from nanows.api import NanoWebSocket
 from asyncio import Lock, sleep as aio_sleep
+from backend.elections import ElectionHandler
+from backend.cache_service import InMemoryCache
 import logging
 from os import getenv
 from copy import deepcopy
@@ -14,8 +16,10 @@ msg_count = 0
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Quart")
 
-#
-election_results = {}
+election_cache = InMemoryCache()
+election_handler = ElectionHandler(election_cache)
+
+# election_results = {}
 elections_temp = {}
 election_results_lock = Lock()
 processed_elections = {}
@@ -25,8 +29,8 @@ current_hash = None
 election_delta = {}
 
 
-def get_election_results():
-    return election_results
+async def get_election_results(transaction_hash):
+    return await election_cache.get(transaction_hash)
 
 
 def get_processed_elections():
@@ -37,14 +41,16 @@ def get_processed_elections():
 
 
 async def trim_election_results():
-    global election_results, election_delta, processed_elections, elections_temp, current_hash, confirmed_elections, unconfirmed_elections
+    global election_delta, processed_elections, elections_temp, current_hash, confirmed_elections, unconfirmed_elections
     while True:
         async with election_results_lock:
-            election_copy = elections_temp
+            elections_delta = elections_temp
             elections_temp = {}
 
-        election_results, update_elections = merge_elections_raw(
-            election_results, election_copy)
+        update_elections = await election_handler.merge_elections(elections_delta)
+
+        # election_results, update_elections = merge_elections_raw(
+        #     election_results, election_copy)
         processed_update_elections = await process_data_for_send(update_elections)
 
         if processed_update_elections:
