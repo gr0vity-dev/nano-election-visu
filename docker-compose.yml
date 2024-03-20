@@ -18,6 +18,7 @@ services:
 
   nano_elections_memcached:
     image: memcached:latest
+    command: ["-m", "2048"] #allocate max 2GB of memory
     restart: unless-stopped
     container_name: nano_elections_memcached
     networks:
