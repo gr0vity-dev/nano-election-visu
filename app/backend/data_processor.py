@@ -194,79 +194,20 @@ def update_overview_data(merged_overview, updated_overview, include_top_voters=5
         else:
             unconfirmed_elections[block_hash] = merged_overview[block_hash]
 
-    # Sort and limit the number of confirmed elections to 100
+    # Sort and limit the number of confirmed elections
     confirmed_sorted = dict(sorted(
         confirmed_elections.items(),
         key=lambda x: x[1].get('first_seen', 0),
         reverse=True
-    )[:100])  # Slice to keep only the top 100
+    )[:100])  # Slice to keep only the top elements
 
-    # Sort and limit the number of unconfirmed elections to 1500
+    # Sort and limit the number of unconfirmed elections
     unconfirmed_sorted = dict(sorted(
         unconfirmed_elections.items(),
         key=lambda x: (x[1].get('normal_weight', 0),
                        x[1].get('final_weight', 0)),
         reverse=True
-    )[:5000])  # Slice to keep only the top 1500
+    )[:5000])  # Slice to keep only the top elements
 
     # Combine sorted and limited dictionaries
-
     return current_hash, confirmed_sorted, unconfirmed_sorted
-
-
-def merge_elections_raw(elections_all, delta):
-    updated_elections = {}
-
-    if not elections_all:
-        elections_all = delta
-        updated_elections = delta
-        return elections_all, updated_elections
-
-    for block_hash, delta_details in delta.items():
-        if block_hash not in elections_all:
-            elections_all[block_hash] = delta_details
-            updated_elections[block_hash] = delta_details
-        else:
-            merge_details = elections_all[block_hash]
-            merge_details["first_confirmed"] = delta_details["first_confirmed"] or merge_details["first_confirmed"]
-
-            # Ensure lists and dictionaries are initialized if not present
-            if "started" not in merge_details:
-                merge_details["started"] = []
-            if "confirmed" not in merge_details:
-                merge_details["confirmed"] = []
-            if "votes" not in merge_details:
-                merge_details["votes"] = {
-                    "normal": 0, "final": 0, "detail": []}
-
-            merge_details["started"].extend(delta_details.get("started", []))
-            merge_details["confirmed"].extend(
-                delta_details.get("confirmed", []))
-
-            for vote_type in ["normal", "final"]:
-                merge_details["votes"][vote_type] += delta_details.get(
-                    "votes", {}).get(vote_type, 0)
-
-            merge_details["votes"]["detail"].extend(
-                delta_details.get("votes", {}).get("detail", []))
-
-            # Update the flags directly in merge_details
-            is_stopped = delta_details.get("is_stopped", False)
-            is_confirmed = delta_details.get("is_confirmed", False)
-            is_active = delta_details.get(
-                "is_active", merge_details.get("is_active", False))
-
-            if is_stopped:
-                merge_details["is_active"] = False
-                merge_details["is_stopped"] = True
-            elif is_confirmed:
-                merge_details["is_active"] = False
-                merge_details["is_stopped"] = False
-                merge_details["is_confirmed"] = True
-            elif is_active:
-                merge_details["is_stopped"] = False
-                merge_details["is_active"] = True
-
-            updated_elections[block_hash] = merge_details
-
-    return elections_all, updated_elections
