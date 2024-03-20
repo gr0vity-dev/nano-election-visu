@@ -76,7 +76,7 @@ async def run_nano_ws_listener():
             # nano_ws = NanoWebSocket(url="wss://proxy.nanobrowse.com/ws")
             nano_ws = NanoWebSocket(url=WS_URL)
             await nano_ws.connect()
-            await nano_ws.subscribe_new_unconfirmed_block()
+            # await nano_ws.subscribe_new_unconfirmed_block()
             await nano_ws.subscribe_vote()
             await nano_ws.subscribe_started_election()
             await nano_ws.subscribe_confirmation(include_block=False)
