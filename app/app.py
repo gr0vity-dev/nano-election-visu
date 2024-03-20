@@ -1,5 +1,5 @@
 from quart import Quart, websocket, render_template, jsonify
-from backend.ws_client import run_nano_ws_listener, get_election_results, trim_election_results, get_processed_elections
+from backend.ws_client import run_nano_ws_listener, get_election_details, aggregate_election_overview, get_election_overview
 from backend.rpc_client import update_online_reps, get_block_info
 from backend.data_processor import election_formatter
 from os import getenv
@@ -21,14 +21,14 @@ previous_data_hash = None
 
 @app.before_serving
 async def startup():
-    app.add_background_task(trim_election_results)
+    app.add_background_task(aggregate_election_overview)
     app.add_background_task(refresh_quorum)
     app.add_background_task(broadcast)
     asyncio.create_task(run_nano_ws_listener())
 
 
 async def get_election_data(hash):
-    election_data = await get_election_results(hash)
+    election_data = await get_election_details(hash)
 
     if not election_data:
         return {"error": "No election data found"}
@@ -38,8 +38,8 @@ async def get_election_data(hash):
 
 
 async def get_data_for_broadcast():
-    processed_elections = await get_processed_elections()
-    return processed_elections
+    election_overview = await get_election_overview()
+    return election_overview
 
 
 async def send_data_to_clients(clients_to_send, data):

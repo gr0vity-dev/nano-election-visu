@@ -1,23 +1,23 @@
 from backend.data_processor import process_data_for_send
 from backend.ws_processor import process_message
 from nanows.api import NanoWebSocket
-from asyncio import Lock, sleep as aio_sleep
+from backend.helpers import MessageCounter
 from backend.elections import ElectionHandler
 from backend.overview import OverviewHandler
 from backend.cache_service import MemcacheCache
-import logging
+from asyncio import Lock, sleep as aio_sleep
 from os import getenv
-from copy import deepcopy
 
-
-WS_URL = getenv("WS_URL")
-MEMCACHE_HOST = getenv("MEMCACHE_HOST")
-MEMCACHE_PORT = getenv("MEMCACHE_PORT")
-msg_count = 0
+import logging
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Quart")
+
+WS_URL = getenv("WS_URL")
+MEMCACHE_HOST = getenv("MEMCACHE_HOST")
+MEMCACHE_PORT = getenv("MEMCACHE_PORT")
+
 
 election_cache = MemcacheCache(
     host=MEMCACHE_HOST, port=MEMCACHE_PORT, prefix="el_")
@@ -33,11 +33,11 @@ election_results_lock = Lock()
 current_hash = None
 
 
-async def get_election_results(transaction_hash):
+async def get_election_details(transaction_hash):
     return await election_cache.get(transaction_hash)
 
 
-async def get_processed_elections():
+async def get_election_overview():
     # Slicing the first 100 confirmed and 250 unconfirmed elections for display
     processed_elections = await overview_handler.retrieve_election_data(
         num_confirmed=50, num_unconfirmed=100)
@@ -45,7 +45,7 @@ async def get_processed_elections():
     return current_hash, processed_elections
 
 
-async def trim_election_results():
+async def aggregate_election_overview():
     global elections_temp, current_hash
     while True:
         async with election_results_lock:
@@ -65,12 +65,8 @@ async def trim_election_results():
 
 
 async def run_nano_ws_listener():
-    def increment_msg_count():
-        global msg_count
-        msg_count += 1
-        if msg_count % 1000 == 0:
-            logger.info(msg_count)
-
+    # This processes all the incoming websocket messages and puts them into elections_temp
+    counter = MessageCounter(logger=logger)
     while True:
         try:
             # nano_ws = NanoWebSocket(url="wss://proxy.nanobrowse.com/ws")
@@ -83,7 +79,7 @@ async def run_nano_ws_listener():
             await nano_ws.subscribe_stopped_election()
 
             async for message in nano_ws.receive_messages():
-                increment_msg_count()
+                counter.increment()
                 async with election_results_lock:
                     await process_message(message, elections_temp)
         except Exception as exc:
