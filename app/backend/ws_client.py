@@ -38,7 +38,7 @@ async def get_election_details(transaction_hash):
 
 
 async def get_election_overview():
-    # Slicing the first 100 confirmed and 250 unconfirmed elections for display
+    # Return a subset of the available data to improve frontend speed
     processed_elections = await overview_handler.retrieve_election_data(
         num_confirmed=50, num_unconfirmed=100)
 
