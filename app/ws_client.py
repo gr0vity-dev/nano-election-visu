@@ -1,4 +1,5 @@
-from data_processor import process_message, process_data_for_send, update_overview_data, merge_elections_raw
+from data_processor import process_data_for_send, update_overview_data, merge_elections_raw
+from ws_processor import process_message
 from nanows.api import NanoWebSocket
 from asyncio import Lock, sleep as aio_sleep
 import logging
