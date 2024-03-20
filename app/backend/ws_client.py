@@ -1,28 +1,29 @@
-from backend.data_processor import process_data_for_send, update_overview_data, merge_elections_raw
+from backend.data_processor import process_data_for_send, update_overview_data
 from backend.ws_processor import process_message
 from nanows.api import NanoWebSocket
 from asyncio import Lock, sleep as aio_sleep
 from backend.elections import ElectionHandler
-from backend.cache_service import InMemoryCache
+from backend.cache_service import MemcacheCache
 import logging
 from os import getenv
 from copy import deepcopy
 
 
 WS_URL = getenv("WS_URL")
+MEMCACHE_HOST = getenv("MEMCACHE_HOST")
+MEMCACHE_PORT = getenv("MEMCACHE_PORT")
 msg_count = 0
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Quart")
 
-election_cache = InMemoryCache()
+election_cache = MemcacheCache(host=MEMCACHE_HOST, port=MEMCACHE_PORT)
 election_handler = ElectionHandler(election_cache)
 
-# election_results = {}
+
 elections_temp = {}
 election_results_lock = Lock()
-processed_elections = {}
 confirmed_elections = {}
 unconfirmed_elections = {}
 current_hash = None
@@ -41,18 +42,18 @@ def get_processed_elections():
 
 
 async def trim_election_results():
-    global election_delta, processed_elections, elections_temp, current_hash, confirmed_elections, unconfirmed_elections
+    global election_delta, elections_temp, current_hash, confirmed_elections, unconfirmed_elections
     while True:
         async with election_results_lock:
             elections_delta = elections_temp
             elections_temp = {}
 
-        update_elections = await election_handler.merge_elections(elections_delta)
+        updated_elections = await election_handler.merge_elections(elections_delta)
 
-        # election_results, update_elections = merge_elections_raw(
-        #     election_results, election_copy)
-        processed_update_elections = await process_data_for_send(update_elections)
+        # View Transformer
+        processed_update_elections = await process_data_for_send(updated_elections)
 
+        # View Aggregator
         if processed_update_elections:
             processed_l = {**confirmed_elections, **unconfirmed_elections}
             current_hash, confirmed_elections, unconfirmed_elections = update_overview_data(

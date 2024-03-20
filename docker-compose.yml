@@ -1,6 +1,7 @@
-version: '3'
+version: '3.5'
 services:
-  nano-explorer:
+  nano_elections:
+    container_name: nano_elections
     build: ./app
     ports:
       - "5003:5000"
@@ -9,4 +10,21 @@ services:
       RPC_URL: ${RPC_URL}
       RPC_USERNAME: ${RPC_USERNAME}
       RPC_PASSWORD: ${RPC_PASSWORD}
+      MEMCACHE_HOST: "nano_elections_memcached"
+      MEMCACHE_PORT: 11211
       BLOCK_EXPLORER: "https://nanobrowse.com"
+    networks:
+    - nano-elections
+
+  nano_elections_memcached:
+    image: memcached:latest
+    restart: unless-stopped
+    container_name: nano_elections_memcached
+    networks:
+    - nano-elections
+    profiles: [memcache]
+
+networks:
+  nano-elections:
+    name: nano-elections
+    driver: bridge
