@@ -60,9 +60,13 @@ async def get_quorum():
 
 async def update_online_reps():
     global online_reps, confirmation_quorum
-
-    online_reps, confirmation_quorum = await fetch_online_reps()
-    return online_reps, confirmation_quorum
+    while True:
+        try:
+            online_reps, confirmation_quorum = await fetch_online_reps()
+            return online_reps, confirmation_quorum
+        except Exception as exc:
+            logger.warn(exc)
+            await aio_sleep(1)
 
 
 async def get_block_info(block_hash=None):

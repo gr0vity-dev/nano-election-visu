@@ -1,4 +1,5 @@
 known = {
+    "nano_14j1gqkn8pekpsapqd8c3kciapphaysf6mgw1spsojzzr6qrtskd9dxtopo7": "nano-gtp.com",
     "nano_1ookerz3adg5rxc4zwwoshim5yyyihf6dpogjihwwq6ksjpq7ea4fuam5mmc": "NanoLooker",
     "nano_1questzx4ym4ncmswhz3r4upwrxosh1hnic8ry8sbh694r48ajq95d1ckpay": "NanoBrowserQuest",
     "nano_3sq7fi6tx9h3h7p3h9oe1ppqq3jkd98yx6txymcuorwbbctymtezsf8ay351": "imalfect",
@@ -575,5 +576,10 @@ known = {
     "nano_3346kkobb11qqpo17imgiybmwrgibr7yi34mwn5j6uywyke8f7fnfp94uyps": "Prussia's Nano Faucet",
     "nano_3yw7sznr3dhgd39y6spu5tzzr7qp3fore5ugz9fkfp4pqsq445yschw5d6xz": "Nano Queen Faucet",
     "nano_1monkecrqoqr6j6qzhtd9i8x49ujdnoqt7ramt9jmhd543icsrx5accoqtd5": "i can haz nano",
-    "nano_18e4hwxk48kfy9kjc81hz494z68xa9u5863ain7jwyorqj6tjwhxibx4rzqu": "getnano.ovh Faucet"
+    "nano_18e4hwxk48kfy9kjc81hz494z68xa9u5863ain7jwyorqj6tjwhxibx4rzqu": "getnano.ovh Faucet",
+    "nano_1ge7edbt774uw7z8exomwiu19rd14io1nocyin5jwpiit3133p9eaaxn74ub": "nl_pr1",
+    "nano_3sz3bi6mpeg5jipr1up3hotxde6gxum8jotr55rzbu9run8e3wxjq1rod9a6": "nl_pr2",
+    "nano_3z93fykzixk7uoswh8fmx7ezefdo7d78xy8sykarpf7mtqi1w4tpg7ejn18h": "nl_pr3",
+    "nano_137xfpc4ynmzj3rsf3nej6mzz33n3f7boj6jqsnxpgqw88oh8utqcq7nska8": "nl_pr4",
+    "nano_1589wfw69o1b8d7sfny6m8h7kbuygpm9kudwci73rcepqtaeqxkq9z1ntiaq": "nl_node5",
 }
